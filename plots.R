@@ -120,7 +120,9 @@ ggplot(num_var, aes(x = reorder(cancer, -count_total), y = value)) +
                     name = "Pathogenic/Benign",
                     labels = c("Benign", "Pathogenic")) +
   theme_minimal() +
-  theme(axis.title = element_text(size = 15),
+  theme(title = element_text(size = 20),
+        legend.title = element_text(size = 11),
+        axis.title = element_text(size = 15),
         axis.text = element_text(size = 11))
 
 # radar chart
