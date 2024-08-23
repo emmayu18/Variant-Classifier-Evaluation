@@ -3,7 +3,7 @@ This is a research project I worked on at Northwestern University Feinberg Schoo
 I evaluated the performance of seven widely-used gene variant AI classification tools using variant data from ClinVar, OncoKB, and MyCancerGenome databases as the predicted data. </p>
 
 ## Objective
-* Evaluate the performance of seven variant classification tool in missense variants of nine solid cancer with actionable genetic targets
+* Evaluate the performance of seven variant classification tool in missense variants of nine solid cancers with actionable genetic targets
 
 ## Skills Displayed in This Project
 * R, RMarkdown, CSS
