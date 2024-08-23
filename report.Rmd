@@ -1,0 +1,245 @@
+---
+title: "Variant Classification Tool Performance Evaluation Project"
+description: |
+  An oncology project I worked on in Chae Lab at Northwestern University Feinberg School of Medicine
+author:
+  - name: Emma Yu
+output:
+  distill::distill_article:
+    css: style.css
+    toc: TRUE
+    fig_width: 10.5
+    fig_height: 7
+    code_folding: Click to view code
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+# Project Overview
+
+Genomics is becoming increasingly important in oncology as precision medicine is continuously being advanced. One area of genomics that oncologists pay attention to is variant classification. A variant is a specific mutation in a gene that is caused by change in nucleotide sequence. There are many types of mutations but we focused on missense mutation, which is caused by a change in a single nucleotide that results in a different amino acid being translated. Many researchers focus on these variants and their classification. A variant is either pathogenic (disease-causing) or benign (not disease-causing). This classification helps clinicians determine the correct treatment plan for their patients. Increased use of next-generation sequencing has led to the discovery of many variants of uncertain significance, which are not clearly categorized as pathogenic or benign. In order to address issues, different companies and institutions have developed *in silico* tools help classify these variants. However, the results tend to be different due to variation between the prediction algorithms. The purpose of this study is to evaluate the performance of seven widely-used *in silico* tools in identifying drug-actionable gene’s variants as pathogenic or benign in nine solid cancers. 
+
+# Methods
+
+To perform the evaluation, we first selected a list of common solid cancers (breast, ovarian, colorectal, melanoma of skin, thyroid, bladder, pancreatic, prostate, and biliary) to focus on. Each cancer type has its own [NCCN guideline](https://www.nccn.org/guidelines/category_1) determined by leading physicians in the area. We determined each cancer's genes that are actionable genetic biomarkers. We then collected pathogenicity data for variants of those genes that have already been classified from three databases: [ClinVar](https://www.ncbi.nlm.nih.gov/clinvar/), [OncoKB](https://www.oncokb.org/), and [My Cancer Genome](https://www.mycancergenome.org/). We took these variants and ran them through our *in silico* tools (PolyPhen-2 HumVar, PolyPhen-2 HumDiv, Align-GVGD, MutationTaster2021, CADD, FATHMM, and REVEL) and compared the results to the predicted value. We computed accuracy, sensitivity specificity, positive predictive value (PPV), negative predictive value (NPV), and Matthews correlation constant (MCC) as our quantitative measure of performance. 
+
+# Analysis
+
+## Packages and Data
+
+I used `tidyverse` and `skimr` packages for data manipulation and skimming. I also used `yardstick` and `caret` packages for performance evaluation analysis. `formattable` provided the function for the results table and `fmsb` was used to create the radar chart.
+
+```{r, echo=TRUE}
+## Load Packages
+library(tidyverse)
+library(skimr)
+library(yardstick)
+library(caret)
+library(formattable)
+library(fmsb)
+
+## Load Data
+result_data <- read_csv("data/result.csv")
+```
+
+## Exploratory Data Analysis (EDA)
+
+I first skimmed the data. As indicated by the following output, all of the resulting data from running through tools (rows 5-11) have missingness to a degree. However, the complete rates are all about 0.98, which is sufficient for analysis. 
+
+```{r, echo=TRUE}
+# skim data
+as_tibble(skim_without_charts(result_data)) %>%
+  select(skim_type, skim_variable, n_missing, complete_rate)
+```
+
+Then, I looked at the distribution of pathogenic and benign variants. The first output shows us that the entire dataset consists of 46.8% pathogenic variants and 53.2% benign variants. This indicates that imbalance is not an issue when looking at the overall data. However, the second output shows us that some of the cancer types have imbalanced data.
+
+```{r, echo=TRUE}
+# number of pathogenic and benign variants
+result_data %>%
+  summarize(count_total = n(),
+            count_path = sum(label),
+            count_ben = count_total - count_path,
+            ratio_path = count_path/count_total,
+            ratio_ben = count_ben/count_total)
+
+# number of pathogenic and benign variants per cancer type
+cancer_path_ben <- result_data %>%
+  group_by(cancer) %>%
+  summarize(count_total = n(),
+            count_path = sum(label),
+            count_ben = count_total - count_path,
+            ratio_path = count_path/count_total,
+            ratio_ben = count_ben/count_total)
+cancer_path_ben
+```
+
+I plotted the number of variants in each cancer type and indicated the ratio of benign and pathogenic variants with color.
+
+```{r, echo=TRUE}
+# number of pathogenic and benign variants for each cancer type
+num_var <- cancer_path_ben %>%
+  select(cancer, count_total, count_path, count_ben) %>%
+  mutate(cancer = str_to_title(cancer)) %>%
+  pivot_longer(cols = c(count_path, count_ben))
+
+# barplot of variant count per cancer type
+ggplot(num_var, aes(x = reorder(cancer, -count_total), y = value)) +
+  geom_col(aes(fill = name)) +
+  labs(title = "Number of Variants in Each Cancer Type",
+       x = "Cancer Type",
+       y = "Number of Variants") +
+  scale_fill_manual(values = c("#6bb3f5", "#fe7575"),
+                    name = "Pathogenic/Benign",
+                    labels = c("Benign", "Pathogenic")) +
+  theme_minimal() +
+  theme(title = element_text(size = 20),
+        legend.title = element_text(size = 11),
+        axis.title = element_text(size = 15),
+        axis.text = element_text(size = 11))
+```
+
+We can see from the bar plot that colorectal, bladder, biliary, melanoma, and thyroid cancers had relatively smaller sample sizes compared to the rest of the cancer types. They also had a higher imbalance between number of benign and pathogenic variants, indicating that MCC is an important metric for evaluating *in silico* tools when the data is stratified with these cancer types.
+
+## Performance Metrics
+
+I created a function, `calc_metric`, that takes in the dataset and returns a tibble containing the six performance metrics for each of our tools. It utilizes the `confusionMatrix` function from the `caret` package and the `mcc` function from the `yardstick` package. The following is the resulting tibble:
+
+```{r, echo=TRUE}
+calc_metrics <- function(dat) {
+  # empty lists for each metric
+  accuracy <- c()
+  sensitivity <- c()
+  specificity <- c()
+  ppv <- c()
+  npv <- c()
+  mcc <- c()
+  # loop through the tool columns of dataset
+  for (i in 5:11) {
+    # confusion matrix function
+    x <- confusionMatrix(factor(as.double(unlist(dat[i]))),
+                         factor(dat$label),
+                         positive = "1")
+    # mcc function
+    y <- mcc(dat,
+             truth = factor(dat$label),
+             estimate = factor(unlist(dat[i])))
+    # append result to corresponding list
+    accuracy <- c(accuracy, x[[3]][[1]])
+    sensitivity <- c(sensitivity, x[[4]][[1]])
+    specificity <- c(specificity, x[[4]][[2]])
+    ppv <- c(ppv, x[[4]][[3]])
+    npv <- c(npv, x[[4]][[4]])
+    mcc <- c(mcc, y[[3]])
+  }
+  # return a tibble containing the filled metric lists
+  return(tibble(Tool = c("PolyPhen-2 HumDiv", "PolyPhen-2 HumVar", 
+                         "MutationTaster2021", "Align GVGD",
+                         "REVEL", "CADD", "FATHMM"),
+                Accuracy = accuracy,
+                Sensitivity = sensitivity,
+                Specificity = specificity,
+                PPV = ppv,
+                NPV = npv,
+                MCC = mcc))
+}
+
+# run calc_metrics function on results_data tibble
+metrics <- calc_metrics(result_data)
+metrics
+```
+
+# Results
+
+## Table 
+
+Using the `formattable` package, I created a table to visualize our resulting performance metrics. Each column has a color gradient set according to the minimum and maximum values of that column. White indicates the lowest value of the column whereas the deepest green indicates the highest value of the column.
+
+```{r, echo=TRUE}
+# alphabetically rearrange rows by tool name and round to 3 decimal places
+table_metrics <- metrics %>%
+  arrange(Tool) %>%
+  mutate(across(where(is.numeric), round, 3))
+
+# metric table
+formattable(table_metrics,
+            align = c("l","c","c","c","c"),
+            list(Accuracy = color_tile("white", "#28c752"),
+                 Sensitivity = color_tile("white", "#28c752"),
+                 Specificity = color_tile("white", "#28c752"),
+                 PPV = color_tile("white", "#28c752"),
+                 NPV = color_tile("white", "#28c752"),
+                 MCC = color_tile("white", "#28c752")))
+```
+
+We can see from the table that MutationTaster2021 contained the all of the highest value in each metric type besides sensitivity and NPV. On the other hand, Align GVGD showed the lowest performance in all of the metrics except sensitivity. REVEL also did fairly well overall.
+
+## Radar Chart
+
+In order to visualize the overall performance of each tool, I created a grid of radar charts using the `fmsb` package.
+
+```{r}
+# add max and min value rows and turn Tool column into indexes
+max_min <- table_metrics %>%
+  add_row(Tool = "max", Accuracy = 1, Sensitivity = 1, Specificity = 1, 
+          PPV = 1.0, NPV = 1, MCC = 1, .before = 1) %>%
+  add_row(Tool = "min", Accuracy = 0, Sensitivity = 0, Specificity = 0, 
+          PPV = 0, NPV = 0, MCC = 0, .before = 2) %>%
+  column_to_rownames('Tool')
+
+# radarchart customization function
+create_beautiful_radarchart <- function(data, color = "#00AFBB", axistype = 0,
+                                        vlabels = colnames(data), vlcex = 0.7,
+                                        caxislabels = NULL, title = NULL, ...){
+  radarchart(
+    data, axistype = axistype,
+    # Customize the polygon
+    pcol = color, pfcol = scales::alpha(color, 0.5), plwd = 2, plty = 1,
+    # Customize the grid
+    cglcol = "grey", cglty = 1, cglwd = 0.8,
+    # Customize the axis
+    axislabcol = "grey",
+    # Variable labels
+    vlcex = vlcex, vlabels = vlabels,
+    caxislabels = caxislabels, title = title, ...
+  )
+}
+
+# save original graphical parameters
+opar <- par()
+# adjust margins
+par(mar=rep(1.2,4))
+# create a 2x4 grid for plots
+par(mfrow=c(2,4))
+
+# run radarchart customization function for each tool
+for (i in 1:7){
+  create_beautiful_radarchart(
+    data = max_min[c(1, 2, i+2), ], 
+    title = rownames(max_min)[i+2],
+    axistype = 1,
+    vlabels = c("Accuracy", "Sens", "Spec", "PPV", "NPV", "MCC"),
+    caxislabels = c("0.00", "0.25", "0.50", "0.75", "1.00"),
+    vlcex = 1.3,
+    calcex = 1.1,
+    cex.main = 1.7,
+    centerzero = TRUE
+  )
+}
+
+# reset parameters
+par <- par(opar)
+```
+
+Again, we can see MutationTaster2021 performed the best whereas Align GVGD performed the worst overall. Although CADD does not perform well overall, we can see that it has a high sensitivity and NPV. Also, from the shape of each radar chart areas, it seems that MCC and specificity tend to be relatively low across all of the tools whereas sensitivity and NPV are relatively high.
+
+# Conclusion
+
+The results show that even widely-used tools have very different performance, and limitations as a diagnostic tool. All of the *in silico* tools demonstrated high sensitivity and could be used to rule out pathogenic variants. However, excluding MutationTaster2021, all tools demonstrated low specificity. This indicates that only MutationTaster2021 should be used to rule in pathogenic variants. Accuracy ranged from moderate to high values across the tools. Besides MutationTaster2021, MCC were found to be especially low. MutationTaster2021 showed the highest level of performance with the highest accuracy, specificity, PPV, and MCC, and relatively high sensitivity and NPV. It even outperformed meta-predictor tools that have demonstrated high performance in previous studies. Conversely, Align-GVGD had the lowest level of performance with the lowest accuracy, specificity, PPV, NPV, and MCC. Although *in silico* tools can offer valuable insights into confirming the pathogenicity of VUS, clinicians should not make a decision based solely on the prediction of *in silico* tools.
+
+# Publication
+
+1.  **Yu E.**, Hong I., Song C., Kim E., Lee G., Lee A., Chae Y.K. (2024). Evaluation of in silico tools for variant classification in missense variants of solid cancer with actionable genetic targets. medRxiv. https://doi.org/10.1101/2024.04.22.24306182
+2.  Song C., **Yu E.**, Hong I., Lee G., Lee A., Cheng W., Kim E., Chae Y.K. (2022). Evaluation of in silico tools for variant classification in missense variants of solid cancer with actionable genetic targets. Cancer Research, 82(12). https://doi.org/10.1158/1538-7445.AM2022-2722 

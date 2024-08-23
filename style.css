@@ -1,0 +1,24 @@
+<style>
+  d-appendix{}
+  d-title {
+    grid-column-gap: 4%;
+  }
+  d-byline {
+    grid-column-gap: 4%;
+  }
+  d-article {
+    grid-column-gap: 4%;
+  }
+  d-article pre {
+    color: gray;
+  }
+  .d-contents.d-contents-float {
+      grid-column-start: 1;
+      padding-right: 0em;
+      padding-left: 3em;
+    }
+  details {
+    color: gray;
+  }
+    
+</style> 
