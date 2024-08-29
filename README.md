@@ -1,7 +1,7 @@
 # Variant Classification Tool Performance Evaluation Project
 This is a research project I worked on at Northwestern University Feinberg School of Medicine. </p>
-https://emmayu18.github.io/Variant-Classifier-Evaluation/ </p>
 I evaluated the performance of seven widely-used gene variant AI classification tools using variant data from ClinVar, OncoKB, and MyCancerGenome databases as the predicted data. </p>
+https://emmayu18.github.io/Variant-Classifier-Evaluation/ </p>
 
 ## Objective
 * Evaluate the performance of seven variant classification tool in missense variants of nine solid cancers with actionable genetic targets
@@ -32,4 +32,5 @@ If you want to play around with my code, feel free to download the `analysis.R` 
 ## Acknowledgement
 This project was done in collaboration with Ilene Hong, Chiwoo Song, and Eugene Kim, Grace Lee, Alice Lee, and Dr. Young Kwang Chae at Chae Lab in Northwestern University Feinberg School of Medicine. </p>
 Citation: </p>
-Yu E., Hong I., Song C., Kim E., Lee G., Lee A., Chae Y.K. (2024). Evaluation of in silico tools for variant classification in missense variants of solid cancer with actionable genetic targets. medRxiv. https://doi.org/10.1101/2024.04.22.24306182
+**Yu E.**, Hong I., Song C., Kim E., Lee G., Lee A., Chae Y.K. (2024). Evaluation of in silico tools for variant classification in missense variants of solid cancer with actionable genetic targets. medRxiv. https://doi.org/10.1101/2024.04.22.24306182 </p>
+Song C., **Yu E.**, Hong I., Lee G., Lee A., Cheng W., Kim E., Chae Y.K. (2022). Evaluation of in silico tools for variant classification in missense variants of solid cancer with actionable genetic targets. Cancer Research, 82. https://doi.org/10.1158/1538-7445.AM2022-2722 
